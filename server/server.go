@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,7 @@ const (
 	apiURL         = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 	processTimeout = 3 * time.Second
 	clientTimeout  = 2 * time.Second // timeout for the client
+	InsertQuery    = `INSERT INTO cotacoes (bid) VALUES (?)`
 )
 
 // CurrencyRates structure for API response
@@ -22,7 +24,7 @@ type CurrencyRates struct {
 	} `json:"USDBRL"`
 }
 
-func ExchangeRateHandler(w http.ResponseWriter, r *http.Request) {
+func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	log.Println("starting request")
 	defer log.Println("request finalized")
 
@@ -35,6 +37,12 @@ func ExchangeRateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "failed to fetch exchange rate", http.StatusInternalServerError)
 		fmt.Printf("error fetching exchange rate: %v\n", err)
+		return
+	}
+
+	if err := saveExchangeRateToDB(db, rate); err != nil {
+		http.Error(w, "Failed to save exchange rate", http.StatusInternalServerError)
+		fmt.Printf("Error saving exchange rate to database: %v\n", err)
 		return
 	}
 
@@ -66,4 +74,12 @@ func fetchExchangeRate() (string, error) {
 	}
 
 	return rates.USDBRL.Bid, nil
+}
+
+func saveExchangeRateToDB(db *sql.DB, bid string) error {
+	_, err := db.Exec(InsertQuery, bid)
+	if err != nil {
+		return fmt.Errorf("failed to insert exchange rate: %w", err)
+	}
+	return nil
 }
