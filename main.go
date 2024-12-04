@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	dbTimeout  = 10 * time.Millisecond // Timeout for the database operation (10ms)
-	serverPort = ":8080"
+	dbTimeout     = 10 * time.Millisecond // Timeout for the database operation (10ms)
+	serverPort    = ":8080"
+	clientTimeout = 2 * time.Second // timeout for the client
 )
 
 func main() {
@@ -23,7 +24,7 @@ func main() {
 	time.Sleep(10 * time.Second)
 
 	// get the exchange rate from the local server
-	ctx, cancel := context.WithTimeout(context.Background(), 3*dbTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
 	defer cancel()
 
 	rate, err := client.GetExchangeRate(ctx)
@@ -33,7 +34,7 @@ func main() {
 	}
 
 	// save the rate to a file
-	if err := client.SaveToFile(rate); err != nil {
+	if err := client.SaveToFile(rate.Bid); err != nil {
 		fmt.Printf("error saving to file: %v\n", err)
 		return
 	}
