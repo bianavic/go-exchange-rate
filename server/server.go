@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	apiURL     = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
-	apiTimeout = 200 * time.Millisecond
+	apiURL         = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+	processTimeout = 3 * time.Second
+	clientTimeout  = 2 * time.Second // timeout for the client
 )
 
 // CurrencyRates structure for API response
@@ -38,12 +39,11 @@ func ExchangeRateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"bid": rate})
 }
 
 func fetchExchangeRate() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), processTimeout) // function execution timeout return context deadline exceeded
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
@@ -52,7 +52,7 @@ func fetchExchangeRate() (string, error) {
 	}
 
 	client := &http.Client{
-		Timeout: 3 * time.Minute, // timeout for the client
+		Timeout: clientTimeout,
 	}
 	resp, err := client.Do(req)
 	if err != nil {
