@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	dbTimeout     = 10 * time.Millisecond // Timeout for the database operation (10ms)
 	serverPort    = ":8080"
-	clientTimeout = 2 * time.Second // timeout for the client
+	clientTimeout = 200 * time.Millisecond // timeout for the client
 )
 
 var (
@@ -34,27 +33,27 @@ func main() {
 
 	go startServer(db)
 
-	if err := waitForServerReady("http://localhost" + serverPort); err != nil {
-		logger.Errorf("Server not ready: %v", err)
-		return
+	for {
+		select {
+		case <-time.After(5 * time.Second):
+			ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
+			defer cancel()
+
+			rate, err := client.GetExchangeRate(ctx)
+			if err != nil {
+				logger.Errorf("error getting exchange rate: %v ", err)
+				return
+			}
+
+			if err := client.SaveToFile(rate.Bid); err != nil {
+				logger.Errorf("error saving to file: %v\n ", err)
+				return
+			}
+
+			fmt.Println("exchange rate saved to cotacao.txt")
+			return
+		}
 	}
-
-	// get the exchange rate from the local server
-	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
-	defer cancel()
-
-	rate, err := client.GetExchangeRate(ctx)
-	if err != nil {
-		logger.Errorf("error getting exchange rate: %v ", err)
-		return
-	}
-
-	if err := client.SaveToFile(rate.Bid); err != nil {
-		logger.Errorf("error saving to file: %v\n ", err)
-		return
-	}
-
-	fmt.Println("exchange rate saved to cotacao.txt")
 }
 
 func startServer(db *sql.DB) {
@@ -64,26 +63,5 @@ func startServer(db *sql.DB) {
 	fmt.Printf("Server running on http://localhost%s/cotacao\n", serverPort)
 	if err := http.ListenAndServe(serverPort, nil); err != nil {
 		logger.Errorf("failed to start server: %v\n ", err)
-	}
-}
-
-// allow the server some time to start before the client makes a request
-func waitForServerReady(serverURL string) error {
-	timeout := time.After(10 * time.Second)   // wait server max time
-	tick := time.Tick(100 * time.Millisecond) // time interval retries
-
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("server did not start within the timeout")
-		case <-tick:
-			resp, err := http.Get(serverURL + "/cotacao")
-			if err == nil {
-				resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					return nil // server ready
-				}
-			}
-		}
 	}
 }

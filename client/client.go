@@ -24,9 +24,8 @@ type BidResponse struct {
 	Bid string `json:"bid"`
 }
 
-// GetExchangeRate fetches the exchange rate from the local server
+// GetExchangeRate fetches the exchange rate from server
 func GetExchangeRate(ctx context.Context) (*BidResponse, error) {
-
 	logger = config.GetLogger("client")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL, nil)
@@ -35,8 +34,7 @@ func GetExchangeRate(ctx context.Context) (*BidResponse, error) {
 		return nil, err
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			logger.Errorf("context deadline exceeded")

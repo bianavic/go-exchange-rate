@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	apiURL         = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
-	processTimeout = 3 * time.Second
-	clientTimeout  = 2 * time.Second // timeout for the client
-	InsertQuery    = `INSERT INTO cotacoes (bid) VALUES (?)`
+	apiURL        = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+	clientTimeout = 200 * time.Millisecond // timeout for the client
+	dbTimeout     = 10 * time.Millisecond  // Timeout for the database operation
+	InsertQuery   = `INSERT INTO cotacoes (bid) VALUES (?)`
 )
 
 var (
@@ -28,9 +28,7 @@ type CurrencyRates struct {
 }
 
 func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-
 	logger = config.GetLogger("server")
-
 	logger.Info("starting request")
 	defer logger.Info("request finalized")
 
@@ -56,8 +54,9 @@ func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	json.NewEncoder(w).Encode(map[string]string{"bid": rate})
 }
 
+// fetch from API
 func fetchExchangeRate() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), processTimeout) // function execution timeout return context deadline exceeded
+	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout) // function execution timeout return context deadline exceeded
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
@@ -66,10 +65,10 @@ func fetchExchangeRate() (string, error) {
 		return "", err
 	}
 
-	client := &http.Client{
-		Timeout: clientTimeout,
-	}
-	resp, err := client.Do(req)
+	//client := &http.Client{
+	//	Timeout: clientTimeout,
+	//}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		logger.Errorf("failed to fetch exchange rate: %v\n", err)
 		return "", err
@@ -86,10 +85,14 @@ func fetchExchangeRate() (string, error) {
 }
 
 func saveExchangeRateToDB(db *sql.DB, bid string) error {
-	_, err := db.Exec(InsertQuery, bid)
+	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
+	defer cancel()
+
+	_, err := db.ExecContext(ctx, InsertQuery, bid)
 	if err != nil {
 		logger.Errorf("failed to insert exchange ratee: %v\n", err)
 		return err
 	}
+	logger.Infof("successfully stored exchange rate: %s", bid)
 	return nil
 }
