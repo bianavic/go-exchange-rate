@@ -16,13 +16,6 @@ const (
 	dbTimeout     = 10 * time.Millisecond // Timeout for the database operation (10ms)
 	serverPort    = ":8080"
 	clientTimeout = 2 * time.Second // timeout for the client
-	dbPath        = "cotacoes.db"
-	createQuery   = `
-	CREATE TABLE IF NOT EXISTS cotacoes (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		bid TEXT NOT NULL,
-		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-	)`
 )
 
 var (
@@ -33,17 +26,18 @@ func main() {
 
 	logger = *config.GetLogger("main")
 
-	db, err := initDB()
+	db, err := config.InitDB()
 	if err != nil {
 		logger.Errorf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
-	// start the server
 	go startServer(db)
 
-	// allow the server some time to start before the client makes a request
-	time.Sleep(dbTimeout)
+	if err := waitForServerReady("http://localhost" + serverPort); err != nil {
+		logger.Errorf("Server not ready: %v", err)
+		return
+	}
 
 	// get the exchange rate from the local server
 	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
@@ -55,7 +49,6 @@ func main() {
 		return
 	}
 
-	// save the rate to a file
 	if err := client.SaveToFile(rate.Bid); err != nil {
 		logger.Errorf("error saving to file: %v\n ", err)
 		return
@@ -74,20 +67,23 @@ func startServer(db *sql.DB) {
 	}
 }
 
-func initDB() (*sql.DB, error) {
-	logger := config.GetLogger("sqlite")
+// allow the server some time to start before the client makes a request
+func waitForServerReady(serverURL string) error {
+	timeout := time.After(10 * time.Second)   // wait server max time
+	tick := time.Tick(100 * time.Millisecond) // time interval retries
 
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		logger.Errorf("error opening sqlite: %v", err)
-		return nil, err
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("server did not start within the timeout")
+		case <-tick:
+			resp, err := http.Get(serverURL + "/cotacao")
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return nil // server ready
+				}
+			}
+		}
 	}
-
-	_, err = db.Exec(createQuery)
-	if err != nil {
-		logger.Errorf("failed to create table: %v", err)
-		return nil, err
-	}
-
-	return db, nil
 }
