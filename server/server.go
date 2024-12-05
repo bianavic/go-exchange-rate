@@ -4,8 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
-	"log"
+	"github.com/bianavic/go-exchange-rate/config"
 	"net/http"
 	"time"
 )
@@ -17,6 +16,10 @@ const (
 	InsertQuery    = `INSERT INTO cotacoes (bid) VALUES (?)`
 )
 
+var (
+	logger *config.Logger
+)
+
 // CurrencyRates structure for API response
 type CurrencyRates struct {
 	USDBRL struct {
@@ -25,8 +28,11 @@ type CurrencyRates struct {
 }
 
 func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	log.Println("starting request")
-	defer log.Println("request finalized")
+
+	logger = config.GetLogger("server")
+
+	logger.Info("starting request")
+	defer logger.Info("request finalized")
 
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -36,13 +42,13 @@ func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	rate, err := fetchExchangeRate()
 	if err != nil {
 		http.Error(w, "failed to fetch exchange rate", http.StatusInternalServerError)
-		fmt.Printf("error fetching exchange rate: %v\n", err)
+		logger.Errorf("error fetching exchange rate: %v\n", err)
 		return
 	}
 
 	if err := saveExchangeRateToDB(db, rate); err != nil {
 		http.Error(w, "Failed to save exchange rate", http.StatusInternalServerError)
-		fmt.Printf("Error saving exchange rate to database: %v\n", err)
+		logger.Errorf("error saving exchange rate to database: %v\n", err)
 		return
 	}
 
@@ -56,7 +62,8 @@ func fetchExchangeRate() (string, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		logger.Errorf("failed to create request: %v\n", err)
+		return "", err
 	}
 
 	client := &http.Client{
@@ -64,13 +71,15 @@ func fetchExchangeRate() (string, error) {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch exchange rate: %w", err)
+		logger.Errorf("failed to fetch exchange rate: %v\n", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	var rates CurrencyRates
 	if err := json.NewDecoder(resp.Body).Decode(&rates); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+		logger.Errorf("failed to decode response: %v\n", err)
+		return "", err
 	}
 
 	return rates.USDBRL.Bid, nil
@@ -79,7 +88,8 @@ func fetchExchangeRate() (string, error) {
 func saveExchangeRateToDB(db *sql.DB, bid string) error {
 	_, err := db.Exec(InsertQuery, bid)
 	if err != nil {
-		return fmt.Errorf("failed to insert exchange rate: %w", err)
+		logger.Errorf("failed to insert exchange ratee: %v\n", err)
+		return err
 	}
 	return nil
 }
