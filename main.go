@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"github.com/bianavic/go-exchange-rate/client"
@@ -13,8 +12,7 @@ import (
 )
 
 const (
-	serverPort    = ":8080"
-	clientTimeout = 200 * time.Millisecond // timeout for the client
+	serverPort = ":8080"
 )
 
 var (
@@ -36,10 +34,8 @@ func main() {
 	for {
 		select {
 		case <-time.After(5 * time.Second):
-			ctx, cancel := context.WithTimeout(context.Background(), clientTimeout)
-			defer cancel()
 
-			rate, err := client.GetExchangeRate(ctx)
+			rate, err := client.GetExchangeRate()
 			if err != nil {
 				logger.Errorf("error getting exchange rate: %v ", err)
 				return

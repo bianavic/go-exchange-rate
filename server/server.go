@@ -4,16 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"github.com/bianavic/go-exchange-rate/config"
 	"net/http"
 	"time"
 )
 
 const (
-	apiURL        = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
-	clientTimeout = 200 * time.Millisecond // timeout for the client
-	dbTimeout     = 10 * time.Millisecond  // Timeout for the database operation
-	InsertQuery   = `INSERT INTO cotacoes (bid) VALUES (?)`
+	apiURL            = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+	maxAPICallTimeout = 200 * time.Millisecond
+	dbTimeout         = 10 * time.Millisecond
+	InsertQuery       = `INSERT INTO cotacoes (bid) VALUES (?)`
 )
 
 var (
@@ -45,8 +46,10 @@ func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	if err := saveExchangeRateToDB(db, rate); err != nil {
-		http.Error(w, "Failed to save exchange rate", http.StatusInternalServerError)
-		logger.Errorf("error saving exchange rate to database: %v\n", err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Failed to save exchange rate", http.StatusInternalServerError)
+			logger.Errorf("error saving exchange rate to database: %v\n", err)
+		}
 		return
 	}
 
@@ -56,18 +59,19 @@ func ExchangeRateHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 
 // fetch from API
 func fetchExchangeRate() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), clientTimeout) // function execution timeout return context deadline exceeded
+	ctx, cancel := context.WithTimeout(context.Background(), maxAPICallTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		logger.Errorf("failed to create request: %v\n", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			logger.Error("timeout: context deadline exceeded")
+		} else {
+			logger.Errorf("failed to create request: %v\n", err)
+		}
 		return "", err
 	}
 
-	//client := &http.Client{
-	//	Timeout: clientTimeout,
-	//}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		logger.Errorf("failed to fetch exchange rate: %v\n", err)
@@ -90,7 +94,11 @@ func saveExchangeRateToDB(db *sql.DB, bid string) error {
 
 	_, err := db.ExecContext(ctx, InsertQuery, bid)
 	if err != nil {
-		logger.Errorf("failed to insert exchange ratee: %v\n", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			logger.Error("timeout: context deadline exceeded")
+		} else {
+			logger.Errorf("failed to insert exchange ratee: %v\n", err)
+		}
 		return err
 	}
 	logger.Infof("successfully stored exchange rate: %s", bid)

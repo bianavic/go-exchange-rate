@@ -9,29 +9,34 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
-	serverURL = "http://localhost:8080/cotacao"
+	serverURL             = "http://localhost:8080/cotacao"
+	serverResponseTimeout = 300 * time.Millisecond
 )
 
 var (
 	logger *config.Logger
 )
 
-// local server response
+// BidResponse local server response
 type BidResponse struct {
 	Bid string `json:"bid"`
 }
 
 // GetExchangeRate fetches the exchange rate from server
-func GetExchangeRate(ctx context.Context) (*BidResponse, error) {
+func GetExchangeRate() (*BidResponse, error) {
 	logger = config.GetLogger("client")
+
+	ctx, cancel := context.WithTimeout(context.Background(), serverResponseTimeout)
+	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serverURL, nil)
 	if err != nil {
 		logger.Errorf("failed to create request: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -48,13 +53,13 @@ func GetExchangeRate(ctx context.Context) (*BidResponse, error) {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		logger.Errorf("unexpected status: %d, body: %s", resp.StatusCode, string(body))
-		return nil, err
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	var bidResp BidResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bidResp); err != nil {
-		logger.Errorf("failed to fetch decode response: %v", err)
-		return nil, err
+		logger.Errorf("failed to decode response: %v", err)
+		return nil, fmt.Errorf("failed to decode response: %v", err)
 	}
 
 	return &bidResp, nil
