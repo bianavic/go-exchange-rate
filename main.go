@@ -8,7 +8,6 @@ import (
 	"github.com/bianavic/go-exchange-rate/server"
 	_ "github.com/mattn/go-sqlite3"
 	"net/http"
-	"time"
 )
 
 const (
@@ -29,27 +28,21 @@ func main() {
 	}
 	defer db.Close()
 
-	go startServer(db)
+	startServer(db)
 
-	for {
-		select {
-		case <-time.After(5 * time.Second):
-
-			rate, err := client.GetExchangeRate()
-			if err != nil {
-				logger.Errorf("error getting exchange rate: %v ", err)
-				return
-			}
-
-			if err := client.SaveToFile(rate.Bid); err != nil {
-				logger.Errorf("error saving to file: %v\n ", err)
-				return
-			}
-
-			fmt.Println("exchange rate saved to cotacao.txt")
-			return
-		}
+	rate, err := client.GetExchangeRate()
+	if err != nil {
+		logger.Errorf("error getting exchange rate: %v ", err)
+		return
 	}
+
+	if err := client.SaveToFile(rate.Bid); err != nil {
+		logger.Errorf("error saving to file: %v\n ", err)
+		return
+	}
+
+	fmt.Println("exchange rate saved to cotacao.txt")
+	return
 }
 
 func startServer(db *sql.DB) {
